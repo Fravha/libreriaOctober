@@ -1,0 +1,20 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+
+# Compilación de .NET
+[Bb]in/
+[Oo]bj/
+
+# Archivos temporales
+[Tt]mp/
+[Tt]emp/
+
+# Configuración local
+appsettings.Development.json
+
+# Archivos del sistema operativo
+Thumbs.db
+.DS_Store

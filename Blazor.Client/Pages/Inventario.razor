@@ -1,0 +1,37 @@
+@page "/inventario"
+@inject LibreriaApi Api
+<PageTitle>Inventario · Librería San Pablo</PageTitle>
+<div class="page-title-row"><div><div class="eyebrow">CONTROL DE EXISTENCIAS</div><h1>Inventario<span class="gold-dot">.</span></h1><p class="subtitle">Disponibilidad en tiempo real y trazabilidad de movimientos.</p></div><button class="btn btn-outline" @onclick="Cargar">↻ Actualizar</button></div>
+@if (!string.IsNullOrEmpty(error)) { <div class="notice notice-danger">@error</div> }
+<div class="mini-stat-row"><div><span>REFERENCIAS ACTIVAS</span><strong>@Filtrados.Count()</strong></div><div><span>UNIDADES EN EXISTENCIA</span><strong>@Filtrados.Sum(x => x.StockActual)</strong></div><div><span>VALOR A PRECIO DE VENTA</span><strong>Bs @Filtrados.Sum(x => x.StockActual * x.PrecioVenta).ToString("N2")</strong></div></div>
+<section class="panel"><div class="panel-heading"><div><div class="eyebrow">DISPONIBILIDAD</div><h2>Existencias por libro</h2></div></div>
+    <div class="toolbar"><div class="search-box"><span>⌕</span><input placeholder="Buscar título o autor..." @bind="buscar" @bind:event="oninput" /></div><select class="select-control" @bind="categoria"><option value="">Todas las categorías</option>@foreach (var c in CategoriasLibro.Todas) { <option value="@c">@c</option> }</select></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>LIBRO</th><th>CATEGORÍA</th><th class="center">INICIAL</th><th class="center">ACTUAL</th><th>DISPONIBILIDAD</th><th class="right">VALOR (BS)</th></tr></thead><tbody>
+    @if (!Filtrados.Any()) { <tr><td colspan="6" class="empty-cell">No se encontraron libros en esta categoría.</td></tr> }
+    @foreach (var libro in Filtrados)
+    {
+        <tr><td><div class="table-book"><span class="book-mini">@(libro.Titulo.Length > 0 ? libro.Titulo[..1].ToUpperInvariant() : "L")</span><div><strong>@libro.Titulo</strong><small>@libro.Autor</small></div></div></td><td><span class="tag">@libro.Categoria</span></td><td class="center">@libro.StockInicial</td><td class="center strong">@libro.StockActual</td><td><span class="pill @(libro.StockActual == 0 ? "pill-danger" : libro.StockActual <= 5 ? "pill-warning" : "pill-success")">@(libro.StockActual == 0 ? "Sin stock" : libro.StockActual <= 5 ? "Stock bajo" : "Disponible")</span></td><td class="right strong">@((libro.StockActual * libro.PrecioVenta).ToString("N2"))</td></tr>
+    }
+    </tbody></table></div>
+</section>
+<section class="panel second-panel"><div class="panel-heading"><div><div class="eyebrow">TRAZABILIDAD</div><h2>Últimos movimientos de stock</h2></div><span class="count-badge">@movimientos.Count</span></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>FECHA</th><th>LIBRO</th><th>TIPO</th><th class="right">MOVIMIENTO</th><th class="right">SALDO</th><th>REFERENCIA</th></tr></thead><tbody>
+    @if (!movimientos.Any()) { <tr><td colspan="6" class="empty-cell">No existen movimientos.</td></tr> }
+    @foreach (var m in movimientos) { <tr><td>@m.Fecha.ToString("dd/MM HH:mm")</td><td class="strong">@m.Titulo</td><td><span class="pill @(m.Tipo == "VENTA" ? "pill-warning" : "pill-success")">@m.Tipo</span></td><td class="right @(m.Cantidad < 0 ? "text-red" : "text-green")">@(m.Cantidad > 0 ? "+" : "")@m.Cantidad</td><td class="right strong">@m.StockResultante</td><td class="small-muted">@m.Referencia</td></tr> }
+    </tbody></table></div>
+</section>
+@code {
+    private List<LibroDTO> libros = new();
+    private List<MovimientoStockDTO> movimientos = new();
+    private string buscar = "", categoria = "";
+    private string? error;
+    private IEnumerable<LibroDTO> Filtrados => libros.Where(x =>
+        (string.IsNullOrWhiteSpace(categoria) || x.Categoria == categoria) &&
+        (string.IsNullOrWhiteSpace(buscar) || x.Titulo.Contains(buscar, StringComparison.OrdinalIgnoreCase) || x.Autor.Contains(buscar, StringComparison.OrdinalIgnoreCase)));
+    protected override async Task OnInitializedAsync() => await Cargar();
+    private async Task Cargar()
+    {
+        try { libros = await Api.Inventario(); movimientos = await Api.Movimientos(); error = null; }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

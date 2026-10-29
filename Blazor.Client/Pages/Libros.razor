@@ -1,0 +1,64 @@
+@page "/libros"
+@inject LibreriaApi Api
+<PageTitle>Libros · Librería San Pablo</PageTitle>
+<div class="page-title-row"><div><div class="eyebrow">CATÁLOGO</div><h1>Gestión de libros<span class="gold-dot">.</span></h1><p class="subtitle">Administra los títulos y define su stock inicial.</p></div><button class="btn btn-primary" @onclick="Nuevo">＋ Nuevo libro</button></div>
+@if (!string.IsNullOrWhiteSpace(error)) { <div class="notice notice-danger">@error</div> }
+@if (!string.IsNullOrWhiteSpace(exito)) { <div class="notice notice-success">@exito</div> }
+<div class="panel">
+    <div class="toolbar"><div class="search-box"><span>⌕</span><input placeholder="Buscar por título o autor..." @bind="buscar" @bind:event="oninput" /></div><select class="select-control" @bind="categoria"><option value="">Todas las categorías</option>@foreach (var c in CategoriasLibro.Todas) { <option value="@c">@c</option> }</select><div class="toolbar-count">@Filtrados.Count() títulos</div></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>LIBRO / AUTOR</th><th>CATEGORÍA</th><th>PRECIO</th><th class="center">STOCK</th><th>ESTADO</th><th class="right">ACCIONES</th></tr></thead><tbody>
+    @if (libros is null) { <tr><td colspan="6" class="empty-cell">Cargando libros...</td></tr> }
+    else if (!Filtrados.Any()) { <tr><td colspan="6" class="empty-cell">Sin libros para estos filtros.</td></tr> }
+    else
+    {
+      foreach (var libro in Filtrados)
+      {
+        <tr class="@(!libro.Activo ? "muted-row" : "")"><td><div class="table-book"><span class="book-mini">@(libro.Titulo.Length > 0 ? libro.Titulo[..1].ToUpperInvariant() : "L")</span><div><strong>@libro.Titulo</strong><small>@libro.Autor</small></div></div></td><td><span class="tag">@libro.Categoria</span></td><td>Bs @libro.PrecioVenta.ToString("N2")</td><td class="center"><strong>@libro.StockActual</strong></td><td><span class="pill @(libro.Activo ? "pill-success" : "pill-muted")">@(libro.Activo ? "Activo" : "Inactivo")</span></td><td class="right"><button class="btn-icon" title="Editar libro" @onclick="() => Editar(libro)">✎</button>@if (libro.Activo) { <button class="btn-icon danger-icon" title="Desactivar libro" @onclick="() => Desactivar(libro)">×</button> }</td></tr>
+      }
+    }
+    </tbody></table></div>
+</div>
+@if (modalAbierto)
+{
+    <div class="modal-scrim" @onclick="Cerrar"><div class="modal-card" @onclick:stopPropagation="true"><div class="modal-head"><div><div class="eyebrow">CATÁLOGO DE LIBROS</div><h2>@(editandoId == 0 ? "Registrar libro" : "Editar libro")</h2></div><button class="modal-close" @onclick="Cerrar">✕</button></div>
+        <div class="form-grid"><div class="field span-2"><label>Título del libro *</label><input @bind="modelo.Titulo" maxlength="180" placeholder="Ej. El principito" /></div><div class="field span-2"><label>Autor *</label><input @bind="modelo.Autor" maxlength="160" placeholder="Nombre del autor" /></div>
+        <div class="field"><label>Categoría *</label><select @bind="modelo.Categoria">@foreach (var c in CategoriasLibro.Todas) { <option value="@c">@c</option> }</select></div>
+        <div class="field"><label>Año de publicación</label><input type="number" min="1000" max="2100" @bind="modelo.AnioPublicacion" /></div>
+        <div class="field"><label>Precio de venta (Bs)</label><input type="number" min="0" step="0.01" @bind="modelo.PrecioVenta" /></div>
+        <div class="field"><label>Stock inicial</label><input type="number" min="0" disabled="@(editandoId != 0)" @bind="modelo.StockInicial" /></div></div>
+        @if (editandoId != 0) { <p class="hint">El stock se actualiza mediante compras y ventas; no se modifica al editar un libro.</p> }
+        @if (!string.IsNullOrWhiteSpace(errorModal)) { <div class="notice notice-danger">@errorModal</div> }
+        <div class="modal-actions"><button class="btn btn-ghost" @onclick="Cerrar">Cancelar</button><button class="btn btn-primary" disabled="@guardando" @onclick="Guardar">@(guardando ? "Guardando..." : "Guardar libro")</button></div>
+    </div></div>
+}
+@code {
+    private List<LibroDTO>? libros;
+    private string buscar = "", categoria = "";
+    private bool modalAbierto, guardando;
+    private int editandoId;
+    private LibroGuardarDTO modelo = new();
+    private string? error, exito, errorModal;
+    private IEnumerable<LibroDTO> Filtrados => (libros ?? new()).Where(x =>
+        (string.IsNullOrWhiteSpace(categoria) || x.Categoria == categoria) &&
+        (string.IsNullOrWhiteSpace(buscar) || x.Titulo.Contains(buscar, StringComparison.OrdinalIgnoreCase) || x.Autor.Contains(buscar, StringComparison.OrdinalIgnoreCase)));
+    protected override async Task OnInitializedAsync() => await Cargar();
+    private async Task Cargar() { try { libros = await Api.Libros(); error = null; } catch (Exception ex) { error = ex.Message; } }
+    private void Nuevo() { editandoId = 0; modelo = new LibroGuardarDTO(); errorModal = null; modalAbierto = true; }
+    private void Editar(LibroDTO x) { editandoId = x.IdLibro; modelo = new() { Titulo = x.Titulo, Autor = x.Autor, Categoria = x.Categoria, AnioPublicacion = x.AnioPublicacion, PrecioVenta = x.PrecioVenta, StockInicial = x.StockInicial }; errorModal = null; modalAbierto = true; }
+    private void Cerrar() { modalAbierto = false; errorModal = null; }
+    private async Task Guardar()
+    {
+        errorModal = null;
+        if (string.IsNullOrWhiteSpace(modelo.Titulo) || string.IsNullOrWhiteSpace(modelo.Autor)) { errorModal = "Completa el título y el autor."; return; }
+        if (modelo.PrecioVenta < 0 || modelo.StockInicial < 0) { errorModal = "El precio y el stock no pueden ser negativos."; return; }
+        guardando = true;
+        try { if (editandoId == 0) await Api.CrearLibro(modelo); else await Api.EditarLibro(editandoId, modelo); Cerrar(); exito = "Libro guardado correctamente."; await Cargar(); }
+        catch (Exception ex) { errorModal = ex.Message; }
+        finally { guardando = false; }
+    }
+    private async Task Desactivar(LibroDTO x)
+    {
+        try { await Api.DesactivarLibro(x.IdLibro); exito = $"Libro '{x.Titulo}' desactivado; se conserva su historial."; await Cargar(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

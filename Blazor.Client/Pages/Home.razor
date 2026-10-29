@@ -1,0 +1,55 @@
+@page "/"
+@inject LibreriaApi Api
+<PageTitle>Inicio · Librería San Pablo</PageTitle>
+<div class="page-title-row">
+    <div><div class="eyebrow">RESUMEN EJECUTIVO</div><h1>Visión general<span class="gold-dot">.</span></h1><p class="subtitle">Tu librería bajo control, en un solo lugar.</p></div>
+    <a class="btn btn-primary" href="ventas"><span>＋</span> Registrar venta</a>
+</div>
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="notice notice-danger">@error <button class="btn btn-sm" @onclick="Cargar">Reintentar</button></div>
+}
+else if (resumen is null)
+{
+    <div class="panel loading-state">Cargando indicadores del negocio...</div>
+}
+else
+{
+    <div class="stat-grid">
+        <div class="stat-card"><div class="stat-head"><span>LIBROS ACTIVOS</span><span class="stat-icon">▤</span></div><div class="stat-value">@resumen.TotalLibros</div><div class="stat-foot">Títulos en catálogo</div></div>
+        <div class="stat-card"><div class="stat-head"><span>UNIDADES EN STOCK</span><span class="stat-icon">▦</span></div><div class="stat-value">@resumen.UnidadesDisponibles</div><div class="stat-foot">Disponibilidad actual</div></div>
+        <div class="stat-card"><div class="stat-head"><span>VENTAS ACUMULADAS</span><span class="stat-icon">↗</span></div><div class="stat-value">Bs @resumen.VentasTotales.ToString("N2")</div><div class="stat-foot">@resumen.NumeroVentas operaciones registradas</div></div>
+        <div class="stat-card warning"><div class="stat-head"><span>STOCK BAJO</span><span class="stat-icon">!</span></div><div class="stat-value">@resumen.LibrosStockBajo</div><div class="stat-foot">Títulos con 5 unidades o menos</div></div>
+    </div>
+    <div class="welcome-panel">
+        <div><div class="eyebrow">CENTRO DE OPERACIONES</div><h2>Todo empieza con una buena gestión.</h2><p>Organiza tu catálogo, registra movimientos y mantén el inventario actualizado automáticamente.</p><div class="hero-actions"><a href="libros" class="btn btn-light">Administrar libros <span>→</span></a><a href="compras" class="btn btn-outline-light">Nueva compra</a></div></div>
+        <div class="hero-art" aria-hidden="true"><div class="hero-circle"><span>LS<span class="hero-small">P</span></span><small>LIBROS · CONOCIMIENTO · GESTIÓN</small></div></div>
+    </div>
+    <div class="two-col">
+        <section class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">ACTIVIDAD RECIENTE</div><h2>Últimas ventas</h2></div><a href="ventas" class="text-link">Ver todas →</a></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>OPERACIÓN</th><th>CLIENTE</th><th>FECHA</th><th class="right">TOTAL</th></tr></thead><tbody>
+            @if (!resumen.UltimasVentas.Any()) { <tr><td colspan="4" class="empty-cell">Aún no hay ventas registradas.</td></tr> }
+            @foreach (var v in resumen.UltimasVentas) { <tr><td class="strong">#@v.IdVenta.ToString("D4")</td><td>@v.ClienteMostrar</td><td>@v.Fecha.ToString("dd/MM/yyyy")</td><td class="right strong">Bs @v.Total.ToString("N2")</td></tr> }
+            </tbody></table></div>
+        </section>
+        <section class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">ATENCIÓN REQUERIDA</div><h2>Reposición sugerida</h2></div><a href="inventario" class="text-link">Inventario →</a></div>
+            @if (!resumen.StockCritico.Any()) { <div class="empty-small">Todos los libros tienen stock suficiente.</div> }
+            @foreach (var libro in resumen.StockCritico)
+            {
+                <div class="critical-row"><div class="book-mini">@(libro.Titulo.Length > 0 ? libro.Titulo[..1].ToUpperInvariant() : "L")</div><div class="critical-name"><strong>@libro.Titulo</strong><small>@libro.Categoria</small></div><span class="pill @(libro.StockActual == 0 ? "pill-danger" : "pill-warning")">@libro.StockActual uds.</span></div>
+            }
+        </section>
+    </div>
+}
+@code {
+    private DashboardDTO? resumen;
+    private string? error;
+    protected override async Task OnInitializedAsync() => await Cargar();
+    private async Task Cargar()
+    {
+        try { error = null; resumen = await Api.Resumen(); }
+        catch (Exception ex) { error = "No se pudo conectar con el servidor. Revisa que Blazor.Server esté ejecutándose. " + ex.Message; }
+    }
+}

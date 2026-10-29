@@ -1,0 +1,63 @@
+@page "/compras"
+@inject LibreriaApi Api
+<PageTitle>Compras · Librería San Pablo</PageTitle>
+<div class="page-title-row"><div><div class="eyebrow">ABASTECIMIENTO</div><h1>Registro de compras<span class="gold-dot">.</span></h1><p class="subtitle">Cada compra incrementa el stock de los libros incluidos.</p></div><span class="page-chip">ENTRADA DE INVENTARIO ↘</span></div>
+@if (!string.IsNullOrEmpty(error)) { <div class="notice notice-danger">@error</div> }
+@if (!string.IsNullOrEmpty(exito)) { <div class="notice notice-success">@exito</div> }
+<div class="work-grid">
+    <section class="panel form-panel"><div class="panel-heading"><div><div class="eyebrow">NUEVA OPERACIÓN</div><h2>Ingresar compra</h2></div><span class="step-marker">01</span></div>
+        <div class="field"><label>Proveedor (opcional)</label><input maxlength="160" placeholder="Nombre del proveedor" @bind="compra.Proveedor" /></div>
+        <div class="field"><label>Libro</label><select @bind="seleccionId"><option value="0">Seleccionar libro...</option>@foreach (var l in Activos) { <option value="@l.IdLibro">@l.Titulo</option> }</select></div>
+        <div class="form-grid"><div class="field"><label>Cantidad</label><input type="number" min="1" @bind="cantidad" /></div><div class="field"><label>Precio de compra (Bs)</label><input type="number" min="0" step="0.01" @bind="precio" /></div></div>
+        <button class="btn btn-outline full-width" @onclick="Agregar">＋ Agregar libro</button>
+        <div class="cart-label">DETALLE DE COMPRA</div>
+        @if (!compra.Detalles.Any()) { <div class="cart-empty">Agrega libros para armar el registro.</div> }
+        @foreach (var item in compra.Detalles)
+        {
+            <div class="cart-row"><div><strong>@NombreLibro(item.IdLibro)</strong><small>@item.Cantidad uds. × Bs @item.PrecioUnitario.ToString("N2")</small></div><div><strong>Bs @((item.Cantidad * item.PrecioUnitario).ToString("N2"))</strong><button class="cart-remove" @onclick="() => Quitar(item)">✕</button></div></div>
+        }
+        <div class="cart-total"><span>TOTAL DE COMPRA</span><strong>Bs @Total.ToString("N2")</strong></div>
+        <div class="field"><label>Observación (opcional)</label><textarea @bind="compra.Observacion" rows="2" maxlength="300" placeholder="Nota interna de la compra..."></textarea></div>
+        <button class="btn btn-primary full-width" disabled="@guardando" @onclick="Guardar">@(guardando ? "Procesando..." : "Registrar compra y sumar stock") <span>→</span></button>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><div class="eyebrow">HISTORIAL</div><h2>Compras registradas</h2></div><span class="count-badge">@historial.Count</span></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>NÚM.</th><th>PROVEEDOR / DETALLE</th><th>FECHA</th><th class="right">TOTAL</th></tr></thead><tbody>
+        @if (!historial.Any()) { <tr><td colspan="4" class="empty-cell">No existen compras registradas.</td></tr> }
+        @foreach (var c in historial) { <tr><td class="strong">#@c.IdCompra.ToString("D4")</td><td><strong>@(string.IsNullOrWhiteSpace(c.Proveedor) ? "Sin proveedor" : c.Proveedor)</strong><div class="small-muted">@(string.Join(", ", c.Detalles.Select(x => $"{x.Cantidad}× {x.Titulo}")))</div></td><td>@c.Fecha.ToString("dd/MM/yyyy HH:mm")</td><td class="right strong">Bs @c.Total.ToString("N2")</td></tr> }
+        </tbody></table></div>
+    </section>
+</div>
+@code {
+    private List<LibroDTO> libros = new();
+    private List<CompraDTO> historial = new();
+    private CompraCrearDTO compra = new();
+    private int seleccionId, cantidad = 1;
+    private decimal precio;
+    private bool guardando;
+    private string? error, exito;
+    private IEnumerable<LibroDTO> Activos => libros.Where(x => x.Activo);
+    private decimal Total => compra.Detalles.Sum(x => x.Cantidad * x.PrecioUnitario);
+    private string NombreLibro(int id) => libros.FirstOrDefault(x => x.IdLibro == id)?.Titulo ?? "Libro";
+    protected override async Task OnInitializedAsync() => await Recargar();
+    private async Task Recargar() { try { libros = await Api.Libros(); historial = await Api.Compras(); } catch (Exception ex) { error = ex.Message; } }
+    private void Agregar()
+    {
+        error = null; exito = null;
+        if (!Activos.Any(x => x.IdLibro == seleccionId)) { error = "Selecciona un libro activo."; return; }
+        if (cantidad < 1 || precio < 0) { error = "Ingresa cantidad positiva y un precio válido."; return; }
+        var existente = compra.Detalles.FirstOrDefault(x => x.IdLibro == seleccionId);
+        if (existente is not null) { existente.Cantidad += cantidad; existente.PrecioUnitario = precio; }
+        else compra.Detalles.Add(new DetalleOperacionInput { IdLibro = seleccionId, Cantidad = cantidad, PrecioUnitario = precio });
+        cantidad = 1; seleccionId = 0; precio = 0;
+    }
+    private void Quitar(DetalleOperacionInput x) => compra.Detalles.Remove(x);
+    private async Task Guardar()
+    {
+        error = null; exito = null;
+        if (!compra.Detalles.Any()) { error = "Agrega al menos un libro."; return; }
+        guardando = true;
+        try { var resultado = await Api.CrearCompra(compra); compra = new(); exito = $"Compra #{resultado.IdCompra} registrada. El inventario se incrementó correctamente."; await Recargar(); }
+        catch (Exception ex) { error = ex.Message; }
+        finally { guardando = false; }
+    }
+}

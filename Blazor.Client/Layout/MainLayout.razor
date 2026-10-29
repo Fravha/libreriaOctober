@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar @(menuAbierto ? "open" : "")">
+        <div class="side-brand">
+            <img class="brand-logo" src="images/logo-lsp.svg" alt="Logo LSP" />
+            <div class="brand-text"><strong>LIBRERÍA<span class="brand-gold">.</span></strong><small>SAN PABLO / LSP</small></div>
+        </div>
+        <div class="side-label">PLATAFORMA DE GESTIÓN</div>
+        <nav class="side-nav" aria-label="Navegación principal" @onclick="CerrarMenu">
+            <NavLink href="" Match="NavLinkMatch.All" class="nav-link"><span class="nav-icon">◫</span> Visión general</NavLink>
+            <NavLink href="libros" class="nav-link"><span class="nav-icon">▤</span> Catálogo de libros</NavLink>
+            <NavLink href="compras" class="nav-link"><span class="nav-icon">↘</span> Compras</NavLink>
+            <NavLink href="ventas" class="nav-link"><span class="nav-icon">↗</span> Ventas</NavLink>
+            <NavLink href="inventario" class="nav-link"><span class="nav-icon">▦</span> Inventario</NavLink>
+        </nav>
+        <div class="side-bottom"><div class="status-dot"></div><div><strong>Sistema operativo</strong><small>Gestión comercial · v1.0</small></div></div>
+    </aside>
+    @if (menuAbierto)
+    {
+        <div class="nav-backdrop" @onclick="CerrarMenu"></div>
+    }
+    <div class="main-area">
+        <header class="topbar">
+            <button class="hamburger" @onclick="AlternarMenu" aria-label="Abrir menú">☰</button>
+            <div class="crumb">ADMINISTRACIÓN <span>/</span> SISTEMA LSP</div>
+            <div class="top-right"><span class="live-dot"></span><span>Panel administrativo</span><span class="user-avatar">SP</span></div>
+        </header>
+        <main class="page-content">@Body</main>
+        <footer class="main-footer"><span>© 2026 Librería San Pablo</span><span>Arquitectura Blazor WebAssembly + Web API + Shared</span></footer>
+    </div>
+</div>
+
+@code {
+    private bool menuAbierto;
+    private void AlternarMenu() => menuAbierto = !menuAbierto;
+    private void CerrarMenu() => menuAbierto = false;
+}

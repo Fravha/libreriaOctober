@@ -1,0 +1,67 @@
+@page "/ventas"
+@inject LibreriaApi Api
+<PageTitle>Ventas · Librería San Pablo</PageTitle>
+<div class="page-title-row"><div><div class="eyebrow">COMERCIAL</div><h1>Registro de ventas<span class="gold-dot">.</span></h1><p class="subtitle">Registra ventas generales o identifica al comprador cuando corresponda.</p></div><span class="page-chip">SALIDA DE INVENTARIO ↗</span></div>
+@if (!string.IsNullOrEmpty(error)) { <div class="notice notice-danger">@error</div> }
+@if (!string.IsNullOrEmpty(exito)) { <div class="notice notice-success">@exito</div> }
+<div class="work-grid">
+    <section class="panel form-panel"><div class="panel-heading"><div><div class="eyebrow">NUEVA OPERACIÓN</div><h2>Registrar venta</h2></div><span class="step-marker">01</span></div>
+        <div class="form-grid"><div class="field"><label>Nombre del cliente (opcional)</label><input @bind="venta.NombreCliente" maxlength="160" placeholder="En blanco = venta general" /></div><div class="field"><label>NIT / CI (opcional)</label><input @bind="venta.NitCi" maxlength="40" placeholder="NIT o documento" /></div></div>
+        <p class="hint">Si no registras nombre, la operación se identifica como <strong>Venta general</strong>.</p>
+        <div class="field"><label>Libro disponible</label><select @bind="seleccionId" @bind:after="ActualizarPrecio"><option value="0">Seleccionar libro...</option>@foreach (var l in Disponibles) { <option value="@l.IdLibro">@l.Titulo (@l.StockActual disponibles)</option> }</select></div>
+        <div class="form-grid"><div class="field"><label>Cantidad</label><input type="number" min="1" @bind="cantidad" /></div><div class="field"><label>Precio unitario (Bs)</label><input type="number" min="0" step="0.01" @bind="precio" /></div></div>
+        <button class="btn btn-outline full-width" @onclick="Agregar">＋ Agregar a la venta</button>
+        <div class="cart-label">DETALLE DE VENTA</div>
+        @if (!venta.Detalles.Any()) { <div class="cart-empty">Selecciona los libros que desea comprar el cliente.</div> }
+        @foreach (var item in venta.Detalles)
+        {
+            <div class="cart-row"><div><strong>@NombreLibro(item.IdLibro)</strong><small>@item.Cantidad uds. × Bs @item.PrecioUnitario.ToString("N2")</small></div><div><strong>Bs @((item.Cantidad * item.PrecioUnitario).ToString("N2"))</strong><button class="cart-remove" @onclick="() => Quitar(item)">✕</button></div></div>
+        }
+        <div class="cart-total"><span>TOTAL DE VENTA</span><strong>Bs @Total.ToString("N2")</strong></div>
+        <button class="btn btn-primary full-width" disabled="@guardando" @onclick="Guardar">@(guardando ? "Procesando..." : "Confirmar venta y descontar stock") <span>→</span></button>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><div class="eyebrow">HISTORIAL</div><h2>Ventas registradas</h2></div><span class="count-badge">@historial.Count</span></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>NÚM.</th><th>CLIENTE / DETALLE</th><th>FECHA</th><th class="right">TOTAL</th></tr></thead><tbody>
+        @if (!historial.Any()) { <tr><td colspan="4" class="empty-cell">No existen ventas registradas.</td></tr> }
+        @foreach (var v in historial) { <tr><td class="strong">#@v.IdVenta.ToString("D4")</td><td><strong>@v.ClienteMostrar</strong><div class="small-muted">@(string.IsNullOrWhiteSpace(v.NitCi) ? "Sin NIT/CI" : "NIT/CI: " + v.NitCi) · @(string.Join(", ", v.Detalles.Select(x => $"{x.Cantidad}× {x.Titulo}")))</div></td><td>@v.Fecha.ToString("dd/MM/yyyy HH:mm")</td><td class="right strong">Bs @v.Total.ToString("N2")</td></tr> }
+        </tbody></table></div>
+    </section>
+</div>
+@code {
+    private List<LibroDTO> libros = new();
+    private List<VentaDTO> historial = new();
+    private VentaCrearDTO venta = new();
+    private int seleccionId, cantidad = 1;
+    private decimal precio;
+    private bool guardando;
+    private string? error, exito;
+    private IEnumerable<LibroDTO> Disponibles => libros.Where(x => x.Activo && x.StockActual > 0);
+    private decimal Total => venta.Detalles.Sum(x => x.Cantidad * x.PrecioUnitario);
+    private string NombreLibro(int id) => libros.FirstOrDefault(x => x.IdLibro == id)?.Titulo ?? "Libro";
+    protected override async Task OnInitializedAsync() => await Recargar();
+    private async Task Recargar() { try { libros = await Api.Libros(); historial = await Api.Ventas(); } catch (Exception ex) { error = ex.Message; } }
+    private void ActualizarPrecio() => precio = libros.FirstOrDefault(x => x.IdLibro == seleccionId)?.PrecioVenta ?? 0;
+    private void Agregar()
+    {
+        error = null; exito = null;
+        var libro = Disponibles.FirstOrDefault(x => x.IdLibro == seleccionId);
+        if (libro is null) { error = "Selecciona un libro con stock disponible."; return; }
+        if (cantidad < 1 || precio < 0) { error = "Ingresa cantidad positiva y un precio válido."; return; }
+        var existente = venta.Detalles.FirstOrDefault(x => x.IdLibro == seleccionId);
+        var reservado = existente?.Cantidad ?? 0;
+        if (reservado + cantidad > libro.StockActual) { error = $"No hay stock suficiente de {libro.Titulo}. Disponible: {libro.StockActual - reservado}."; return; }
+        if (existente is not null) { existente.Cantidad += cantidad; existente.PrecioUnitario = precio; }
+        else venta.Detalles.Add(new DetalleOperacionInput { IdLibro = seleccionId, Cantidad = cantidad, PrecioUnitario = precio });
+        cantidad = 1; seleccionId = 0; precio = 0;
+    }
+    private void Quitar(DetalleOperacionInput x) => venta.Detalles.Remove(x);
+    private async Task Guardar()
+    {
+        error = null; exito = null;
+        if (!venta.Detalles.Any()) { error = "Agrega al menos un libro."; return; }
+        guardando = true;
+        try { var resultado = await Api.CrearVenta(venta); venta = new(); exito = $"Venta #{resultado.IdVenta} registrada. El stock se descontó correctamente."; await Recargar(); }
+        catch (Exception ex) { error = ex.Message; await Recargar(); }
+        finally { guardando = false; }
+    }
+}
